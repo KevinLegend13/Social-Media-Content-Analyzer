@@ -12,6 +12,7 @@ from services.file_validator import (
 )
 from services.text_extractor import extract_text_from_pdf, render_pdf_pages_to_images
 from services.ocr_service import ocr_image, ocr_pdf_pages, check_tesseract_available
+from services.content_analyzer import analyze_content
 
 app = FastAPI(
     title="Social Media Content Analyzer API",
@@ -114,10 +115,17 @@ async def upload_and_extract(file: UploadFile = File(...)):
         )
 
 
+def _build_analysis(text: str, word_count: int, character_count: int) -> dict | None:
+    if not text:
+        return None
+    return analyze_content(text, word_count=word_count, character_count=character_count)
+
+
 def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) -> ExtractionResponse:
     result = extract_text_from_pdf(content)
 
     if result["success"]:
+        analysis = _build_analysis(result["extracted_text"], result["word_count"], result["character_count"])
         return ExtractionResponse(
             success=True,
             filename=filename,
@@ -129,6 +137,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
             extraction_method=result["extraction_method"],
             character_count=result["character_count"],
             word_count=result["word_count"],
+            analysis=analysis,
         )
 
     if result.get("needs_ocr"):
@@ -163,6 +172,9 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
             )
 
         ocr_result = ocr_pdf_pages(page_images)
+        analysis = None
+        if ocr_result["success"] and ocr_result["extracted_text"]:
+            analysis = _build_analysis(ocr_result["extracted_text"], ocr_result["word_count"], ocr_result["character_count"])
         return ExtractionResponse(
             success=ocr_result["success"],
             filename=filename,
@@ -174,6 +186,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
             extraction_method="pdf_ocr",
             character_count=ocr_result["character_count"],
             word_count=ocr_result["word_count"],
+            analysis=analysis,
         )
 
     return ExtractionResponse(
@@ -192,6 +205,9 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
 
 def _process_image(content: bytes, filename: str, file_type: str, file_size: int) -> ExtractionResponse:
     result = ocr_image(content)
+    analysis = None
+    if result["success"] and result["extracted_text"]:
+        analysis = _build_analysis(result["extracted_text"], result["word_count"], result["character_count"])
     return ExtractionResponse(
         success=result["success"],
         filename=filename,
@@ -203,4 +219,5 @@ def _process_image(content: bytes, filename: str, file_type: str, file_size: int
         extraction_method="image_ocr",
         character_count=result["character_count"],
         word_count=result["word_count"],
+        analysis=analysis,
     )
