@@ -4,48 +4,17 @@ const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 const ACCEPTED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg']
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 
-function formatFileSize(bytes) {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
-
 function getFileExtension(name) {
   const idx = name.lastIndexOf('.')
   return idx >= 0 ? name.substring(idx).toLowerCase() : ''
 }
-
 function validateFile(file) {
   const ext = getFileExtension(file.name)
-  if (!ACCEPTED_EXTENSIONS.includes(ext)) {
-    return `Unsupported file type "${ext}". Accepted: PDF, PNG, JPG, JPEG.`
-  }
-  if (!ACCEPTED_TYPES.includes(file.type) && file.type !== '') {
-    return `Invalid file type. Accepted: PDF, PNG, JPG, JPEG.`
-  }
-  if (file.size === 0) {
-    return 'File is empty. Please upload a valid file.'
-  }
-  if (file.size > MAX_SIZE_BYTES) {
-    return `File too large (${formatFileSize(file.size)}). Maximum size is 10 MB.`
-  }
+  if (!ACCEPTED_EXTENSIONS.includes(ext)) return `Unsupported file type "${ext}". Accepted: PDF, PNG, JPG, JPEG.`
+  if (!ACCEPTED_TYPES.includes(file.type) && file.type !== '') return 'Invalid file type. Accepted: PDF, PNG, JPG, JPEG.'
+  if (file.size === 0) return 'File is empty. Please upload a valid file.'
+  if (file.size > MAX_SIZE_BYTES) return `File too large. Maximum size is 10 MB.`
   return null
-}
-
-function getStatusLabel(uploading, result) {
-  if (uploading) return 'Uploading...'
-  return null
-}
-
-function getExtractionLabel(result) {
-  if (!result) return null
-  switch (result.extraction_method) {
-    case 'pdf_ocr': return 'Extracted via OCR (scanned PDF)'
-    case 'image_ocr': return 'Extracted via OCR (image)'
-    case 'pdf_text': return 'Extracted from PDF text'
-    default: return 'Extraction complete'
-  }
 }
 
 export default function FileUpload({ onFileValidated }) {
@@ -53,233 +22,194 @@ export default function FileUpload({ onFileValidated }) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [error, setError] = useState(null)
   const [uploading, setUploading] = useState(false)
-  const [uploadResult, setUploadResult] = useState(null)
   const inputRef = useRef(null)
-
-  const reset = useCallback(() => {
-    setSelectedFile(null)
-    setError(null)
-    setUploading(false)
-    setUploadResult(null)
-    if (inputRef.current) inputRef.current.value = ''
-    if (onFileValidated) onFileValidated(null)
-  }, [onFileValidated])
 
   const processFile = useCallback(async (file) => {
     setError(null)
-    setUploadResult(null)
-
     const validationError = validateFile(file)
-    if (validationError) {
-      setError(validationError)
-      return
-    }
-
+    if (validationError) { setError(validationError); return }
     setSelectedFile(file)
     setUploading(true)
-
     try {
       const formData = new FormData()
       formData.append('file', file)
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-
+      const response = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await response.json()
-
       if (!response.ok) {
         const message = data.detail?.message || data.detail || 'Upload failed.'
         setError(typeof message === 'string' ? message : 'Upload failed.')
-        setUploading(false)
-        return
+        setUploading(false); setSelectedFile(null); return
       }
-
-      setUploadResult(data)
       setUploading(false)
       if (onFileValidated) onFileValidated(data)
     } catch {
       setError('Network error. Please check if the server is running.')
-      setUploading(false)
+      setUploading(false); setSelectedFile(null)
     }
   }, [onFileValidated])
 
   const handleDrag = useCallback((e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
-      setDragActive(false)
-    }
+    e.preventDefault(); e.stopPropagation()
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true)
+    else if (e.type === 'dragleave') setDragActive(false)
   }, [])
-
   const handleDrop = useCallback((e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0])
-    }
+    e.preventDefault(); e.stopPropagation(); setDragActive(false)
+    if (e.dataTransfer.files?.length) processFile(e.dataTransfer.files[0])
   }, [processFile])
-
-  const handleChange = useCallback((e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0])
-    }
-  }, [processFile])
-
-  const handleBrowse = useCallback(() => {
-    inputRef.current?.click()
-  }, [])
-
-  const statusLabel = getStatusLabel(uploading, uploadResult)
+  const handleChange = useCallback((e) => { if (e.target.files?.length) processFile(e.target.files[0]) }, [processFile])
+  const handleBrowse = useCallback(() => inputRef.current?.click(), [])
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,.png,.jpg,.jpeg"
-        onChange={handleChange}
-        className="hidden"
-      />
+    <div className="bg-[#050505]">
+      <input ref={inputRef} type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleChange} className="hidden" />
 
-      {!selectedFile && !uploadResult && (
-        <div
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-          onClick={handleBrowse}
-          className={`
-            relative cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center
-            transition-all duration-200
-            ${dragActive
-              ? 'border-blue-500 bg-blue-50 scale-[1.02]'
-              : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-gray-50'
-            }
-          `}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <svg
-              className={`w-12 h-12 transition-colors ${dragActive ? 'text-blue-500' : 'text-gray-400'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"
-              />
-            </svg>
-            <p className="text-lg font-medium text-gray-700">
-              Drop your PDF or image here
-            </p>
-            <p className="text-sm text-gray-500">
-              PDF, PNG, JPG or JPEG &bull; Max 10 MB
-            </p>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleBrowse()
-              }}
-              className="mt-2 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-            >
-              Browse files
-            </button>
-          </div>
+      {/* HERO — cinematic, editorial, asymmetric */}
+      <section className="relative overflow-hidden border-b border-white/[0.07]">
+        {/* subtle abstract treatment — faint grid + radial glow, no cheesy AI */}
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-[#050505]" />
+          {/* very faint grid */}
+          <div className="absolute inset-0 opacity-[0.035]" style={{
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.8) 1px, transparent 1px)`,
+            backgroundSize: '72px 72px'
+          }} />
+          {/* restrained radial lighting — electric blue / violet, extremely subtle */}
+          <div className="absolute -top-[28%] left-[42%] w-[860px] h-[680px] rounded-full opacity-[0.09] blur-[1px]" style={{ background: 'radial-gradient(ellipse at center, #6B7CFF 0%, #3A2ADE 28%, transparent 72%)' }} />
+          <div className="absolute top-[22%] -right-[10%] w-[560px] h-[560px] rounded-full opacity-[0.06]" style={{ background: 'radial-gradient(ellipse at center, #FF3B30 0%, transparent 68%)' }} />
+          {/* fine flowing line — hairline */}
+          <div className="absolute top-[58%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
         </div>
-      )}
 
-      {statusLabel && (
-        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-center gap-3">
-          <svg className="animate-spin h-5 w-5 text-blue-600 flex-shrink-0" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <span className="text-sm text-blue-700 font-medium">{statusLabel}</span>
-        </div>
-      )}
+        <div className="relative max-w-[1480px] mx-auto px-6 sm:px-8 lg:px-10">
+          {/* asymmetric grid: text left, upload right */}
+          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-10 lg:gap-8 pt-12 sm:pt-16 lg:pt-[72px] pb-10 sm:pb-12 lg:pb-[56px] items-start">
+            {/* Left — huge typography */}
+            <div className="min-w-0">
+              <p className="mono text-[10px] tracking-[0.18em] text-white/40">CONTENT INTELLIGENCE / 01</p>
 
-      {uploadResult && (
-        <div className="space-y-4">
-          <div className={`rounded-2xl border p-5 ${uploadResult.success ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
-            <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${uploadResult.success ? 'bg-green-100' : 'bg-amber-100'}`}>
-                {uploadResult.success ? (
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                  </svg>
-                )}
+              <h1 className="mt-6 font-[300] leading-[0.88] tracking-[-0.04em] text-[#F2EFE8]">
+                <span className="block text-[44px] sm:text-[58px] lg:text-[78px] xl:text-[86px]">SOCIAL</span>
+                <span className="block text-[44px] sm:text-[58px] lg:text-[78px] xl:text-[86px] -mt-1">MEDIA</span>
+                <span className="block text-[44px] sm:text-[58px] lg:text-[78px] xl:text-[86px] -mt-1">CONTENT</span>
+                <span className="block text-[44px] sm:text-[58px] lg:text-[78px] xl:text-[86px] -mt-1 font-[300] text-white/90">ANALYZER</span>
+              </h1>
+
+              <p className="mt-6 max-w-[420px] text-[14px] sm:text-[15px] leading-[1.65] text-white/55">
+                Understand how your content is structured, how engaging it is, and what could make it stronger.
+              </p>
+
+              {/* mobile upload appears here after hero on small screens — we keep same upload block but hidden on lg */}
+              <div className="lg:hidden mt-8">
+                {/* upload card duplicated for mobile — rendered once via shared component below, so hide */}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium ${uploadResult.success ? 'text-green-800' : 'text-amber-800'}`}>
-                  {uploadResult.message}
-                </p>
-                <p className={`text-xs mt-1 ${uploadResult.success ? 'text-green-600' : 'text-amber-600'}`}>
-                  {uploadResult.filename} &bull; {formatFileSize(uploadResult.file_size)} &bull; {uploadResult.file_type.toUpperCase()}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={reset}
-                className={`flex-shrink-0 px-3 py-1.5 text-sm rounded-lg transition-colors ${uploadResult.success ? 'text-green-700 hover:text-green-900 hover:bg-green-100' : 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'}`}
-              >
-                Upload another
-              </button>
-            </div>
-          </div>
 
-          {uploadResult.success && uploadResult.extracted_text && (
-            <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900">Extracted Text</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{getExtractionLabel(uploadResult)}</p>
+              <div className="hidden lg:flex items-center gap-6 mt-10 pt-8 border-t border-white/[0.07] max-w-[520px]">
+                <div className="flex items-center gap-2">
+                  <span className="w-1 h-1 rounded-full bg-white/30" />
+                  <span className="mono text-[10px] tracking-[0.14em] text-white/40">PDF · PNG · JPG · JPEG</span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                  {uploadResult.page_count > 0 && (
-                    <span>{uploadResult.page_count} page{uploadResult.page_count !== 1 ? 's' : ''}</span>
-                  )}
-                  <span>{uploadResult.character_count.toLocaleString()} chars</span>
-                  <span>{uploadResult.word_count.toLocaleString()} words</span>
+                <span className="mono text-[10px] tracking-[0.14em] text-white/25">MAX 10 MB</span>
+              </div>
+            </div>
+
+            {/* Right — elegant thin upload area */}
+            <div className="lg:pt-2">
+              {!uploading ? (
+                <div
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={handleBrowse}
+                  className={`group relative cursor-pointer border bg-white/[0.015] backdrop-blur-[2px] transition-all duration-300
+                    ${dragActive ? 'border-[#6B7CFF]/50 bg-white/[0.04]' : 'border-white/15 hover:border-white/25 hover:bg-white/[0.03]'}
+                  `}
+                >
+                  {/* inner */}
+                  <div className="px-7 sm:px-8 py-9 sm:py-10">
+                    <div className="flex items-start justify-between gap-4">
+                      <p className="mono text-[10px] tracking-[0.18em] text-white/40">DROP YOUR CONTENT</p>
+                      <span className="hidden sm:inline mono text-[10px] tracking-[0.12em] text-white/20 border border-white/10 px-2 py-1">01 — UPLOAD</span>
+                    </div>
+
+                    <div className="mt-8 flex flex-col items-center text-center">
+                      <div className={`w-10 h-10 border flex items-center justify-center transition-colors ${dragActive ? 'border-[#6B7CFF]/40 bg-[#6B7CFF]/10' : 'border-white/12 bg-white/[0.02] group-hover:border-white/20'}`}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className={dragActive ? 'text-[#6B7CFF]' : 'text-white/50'}>
+                          <path d="M12 16V4M12 4l-5 5M12 4l5 5M4 14v4a2 2 0 002 2h12a2 2 0 002-2v-4" />
+                        </svg>
+                      </div>
+                      <p className="mt-5 text-[15px] tracking-[-0.01em] text-white/90">
+                        {dragActive ? 'Drop your file here' : 'Drag & drop your file here'}
+                      </p>
+                      <p className="mono mt-2 text-[11px] tracking-[0.10em] text-white/35">OR CLICK TO BROWSE</p>
+
+                      <div className="mt-6 flex items-center gap-2 mono text-[10px] tracking-[0.14em] text-white/30">
+                        <span>PDF</span><span className="text-white/15">·</span><span>PNG</span><span className="text-white/15">·</span><span>JPG</span><span className="text-white/15">·</span><span>JPEG</span>
+                      </div>
+                      <p className="mono mt-1 text-[10px] tracking-[0.12em] text-white/25">MAX 10 MB</p>
+
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleBrowse() }}
+                        className="mt-7 mono text-[11px] tracking-[0.16em] border border-white/15 px-7 py-[10px] text-white/90 hover:bg-white hover:text-black transition-colors"
+                      >
+                        CHOOSE FILE
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* bottom hairline accent when drag */}
+                  <div className={`h-px bg-gradient-to-r from-transparent via-[#6B7CFF]/60 to-transparent transition-opacity ${dragActive ? 'opacity-100' : 'opacity-0'}`} />
                 </div>
-              </div>
-              <div className="p-5 max-h-96 overflow-y-auto">
-                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
-                  {uploadResult.extracted_text}
-                </pre>
-              </div>
-            </div>
-          )}
+              ) : (
+                <div className="border border-white/10 bg-white/[0.02] px-7 sm:px-8 py-10">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-8 h-8 border border-white/15 rounded-full border-t-white/80 animate-spin" style={{ borderTopColor: 'rgba(255,255,255,0.9)' }} />
+                    <p className="mono mt-5 text-[11px] tracking-[0.16em] text-white/60">PROCESSING — EXTRACTING TEXT</p>
+                    <p className="mt-2 text-[13px] leading-relaxed text-white/40 max-w-[28ch] truncate">{selectedFile?.name}</p>
+                    <p className="mono mt-1 text-[10px] tracking-[0.12em] text-white/25">OCR IF REQUIRED · HEURISTIC SCORING</p>
+                  </div>
+                </div>
+              )}
 
-          {uploadResult.success && !uploadResult.extracted_text && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
-              <p className="text-sm text-amber-700">No readable text could be extracted from this file.</p>
-            </div>
-          )}
-        </div>
-      )}
+              {error && (
+                <div className="mt-3 border border-red-500/20 bg-red-500/[0.06] px-4 py-3 flex gap-3">
+                  <span className="mono text-[10px] tracking-[0.12em] text-red-400 mt-0.5">ERROR</span>
+                  <p className="text-[13px] leading-relaxed text-red-300/90">{error}</p>
+                </div>
+              )}
 
-      {error && (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4 flex items-start gap-3">
-          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-red-100 flex items-center justify-center mt-0.5">
-            <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-            </svg>
+              {/* tiny reassurance */}
+              <p className="mono mt-3 text-[10px] leading-relaxed tracking-[0.08em] text-white/20">
+                Heuristic content intelligence — no LLM, no external AI API. Text is processed locally via PyMuPDF + Tesseract when needed.
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-red-700">{error}</p>
         </div>
-      )}
+      </section>
+
+      {/* HOW IT WORKS — editorial, not cards */}
+      <section className="border-b border-white/[0.07]">
+        <div className="max-w-[1480px] mx-auto px-6 sm:px-8 lg:px-10 py-10 sm:py-12">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-8">
+            <p className="mono text-[10px] tracking-[0.18em] text-white/35 shrink-0">HOW IT WORKS / 02</p>
+            <div className="grid sm:grid-cols-3 gap-8 lg:gap-10 max-w-[760px] w-full">
+              {[
+                { n: '01', t: 'Validate & extract', d: 'PDF text via PyMuPDF. Scanned PDFs and images via Tesseract OCR.' },
+                { n: '02', t: 'Heuristic scoring', d: '9 components — length, hashtags, CTA, hook, readability, formatting, energy, variety.' },
+                { n: '03', t: 'Actionable report', d: 'Suitability, score explanations, strengths, improvements, download.' },
+              ].map(s => (
+                <div key={s.n} className="border-t border-white/10 pt-4">
+                  <p className="mono text-[10px] tracking-[0.16em] text-white/25">{s.n}</p>
+                  <p className="mt-2 text-[14px] tracking-[-0.01em] text-white/90">{s.t}</p>
+                  <p className="mt-2 text-[13px] leading-[1.6] text-white/45">{s.d}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

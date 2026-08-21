@@ -22,6 +22,33 @@ class ContentMetrics(BaseModel):
     cta_found: list[str]
 
 
+class SuitabilityInfo(BaseModel):
+    label: str
+    suitability: str
+    reasons: list[str]
+    content_type: str
+    suitability_confidence: int
+    score_applicability: str
+    score_applicability_reason: str
+    classification_reasons: list[str]
+
+
+class ContentAnalysis(BaseModel):
+    metrics: ContentMetrics
+    engagement_score: int
+    score_breakdown: dict[str, int]
+    score_explanations: dict[str, dict]
+    suitability: SuitabilityInfo
+    content_type: str
+    suitability_confidence: int
+    score_applicability: str
+    score_applicability_reason: str
+    classification_reasons: list[str]
+    strengths: list[str]
+    improvements: list[str]
+    suggestions: list[str]
+
+
 class ExtractionResponse(BaseModel):
     success: bool
     filename: str
@@ -33,4 +60,6 @@ class ExtractionResponse(BaseModel):
     extraction_method: str
     character_count: int
     word_count: int
-    analysis: dict | None = None
+    analysis: ContentAnalysis | dict | None = None
+    download_id: str | None = None
+

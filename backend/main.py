@@ -1,5 +1,8 @@
+import uuid
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from models.schemas import HealthResponse, ExtractionResponse
 from services.file_validator import (
@@ -26,6 +29,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_file_store: dict[str, tuple[bytes, str]] = {}
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -97,15 +102,20 @@ async def upload_and_extract(file: UploadFile = File(...)):
     if detected_type == "jpg" and ext_type == "jpeg":
         detected_type = "jpeg"
 
+    download_id = str(uuid.uuid4())
+    _file_store[download_id] = (content, file.content_type or "application/octet-stream")
+
     try:
         if detected_type == "pdf":
-            result = _process_pdf(content, filename, detected_type, len(content))
+            result = _process_pdf(content, filename, detected_type, len(content), download_id)
         else:
-            result = _process_image(content, filename, detected_type, len(content))
+            result = _process_image(content, filename, detected_type, len(content), download_id)
         return result
     except HTTPException:
+        _file_store.pop(download_id, None)
         raise
     except Exception:
+        _file_store.pop(download_id, None)
         raise HTTPException(
             status_code=500,
             detail={
@@ -115,13 +125,21 @@ async def upload_and_extract(file: UploadFile = File(...)):
         )
 
 
+@app.get("/api/download/{download_id}")
+async def download_file(download_id: str):
+    if download_id not in _file_store:
+        raise HTTPException(status_code=404, detail="File not found or expired.")
+    content, content_type = _file_store[download_id]
+    return Response(content=content, media_type=content_type)
+
+
 def _build_analysis(text: str, word_count: int, character_count: int) -> dict | None:
     if not text:
         return None
     return analyze_content(text, word_count=word_count, character_count=character_count)
 
 
-def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) -> ExtractionResponse:
+def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, download_id: str) -> ExtractionResponse:
     result = extract_text_from_pdf(content)
 
     if result["success"]:
@@ -138,6 +156,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
             character_count=result["character_count"],
             word_count=result["word_count"],
             analysis=analysis,
+            download_id=download_id,
         )
 
     if result.get("needs_ocr"):
@@ -154,6 +173,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
                 extraction_method="pdf_ocr",
                 character_count=0,
                 word_count=0,
+                download_id=download_id,
             )
 
         page_images = render_pdf_pages_to_images(content)
@@ -169,6 +189,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
                 extraction_method="pdf_ocr",
                 character_count=0,
                 word_count=0,
+                download_id=download_id,
             )
 
         ocr_result = ocr_pdf_pages(page_images)
@@ -187,6 +208,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
             character_count=ocr_result["character_count"],
             word_count=ocr_result["word_count"],
             analysis=analysis,
+            download_id=download_id,
         )
 
     return ExtractionResponse(
@@ -200,10 +222,11 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int) 
         extraction_method="pdf_text",
         character_count=0,
         word_count=0,
+        download_id=download_id,
     )
 
 
-def _process_image(content: bytes, filename: str, file_type: str, file_size: int) -> ExtractionResponse:
+def _process_image(content: bytes, filename: str, file_type: str, file_size: int, download_id: str) -> ExtractionResponse:
     result = ocr_image(content)
     analysis = None
     if result["success"] and result["extracted_text"]:
@@ -220,4 +243,5 @@ def _process_image(content: bytes, filename: str, file_type: str, file_size: int
         character_count=result["character_count"],
         word_count=result["word_count"],
         analysis=analysis,
+        download_id=download_id,
     )

@@ -1,1 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap');
 @import "tailwindcss";
+
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.12) transparent; }
+html { scroll-behavior: smooth; }
+body {
+  background: #050505;
+  color: #EAE6DF;
+  font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: rgba(88,101,242,0.35); }
+
+.mono { font-family: 'JetBrains Mono', monospace; }
+.display { font-family: 'Newsreader', serif; }
