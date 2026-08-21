@@ -4,7 +4,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
-from models.schemas import HealthResponse, ExtractionResponse
+from models.schemas import HealthResponse, ExtractionResponse, GeminiStatusResponse
 from services.file_validator import (
     ALLOWED_EXTENSIONS,
     ALLOWED_MIME_TYPES,
@@ -16,6 +16,7 @@ from services.file_validator import (
 from services.text_extractor import extract_text_from_pdf, render_pdf_pages_to_images
 from services.ocr_service import ocr_image, ocr_pdf_pages, check_tesseract_available
 from services.content_analyzer import analyze_content
+from services.gemini_service import get_gemini_status, generate_gemini_interpretation
 
 app = FastAPI(
     title="Social Media Content Analyzer API",
@@ -41,6 +42,12 @@ async def health_check():
 @app.get("/api/tesseract")
 async def tesseract_status():
     return check_tesseract_available()
+
+
+@app.get("/api/gemini/status", response_model=GeminiStatusResponse)
+async def gemini_status():
+    return get_gemini_status()
+
 
 
 @app.post("/api/upload", response_model=ExtractionResponse)
@@ -139,11 +146,21 @@ def _build_analysis(text: str, word_count: int, character_count: int) -> dict | 
     return analyze_content(text, word_count=word_count, character_count=character_count)
 
 
+def _build_ai_analysis(analysis: dict | None, extracted_text: str):
+    if not analysis:
+        return None
+    try:
+        return generate_gemini_interpretation(analysis, extracted_text)
+    except Exception:
+        return None
+
+
 def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, download_id: str) -> ExtractionResponse:
     result = extract_text_from_pdf(content)
 
     if result["success"]:
         analysis = _build_analysis(result["extracted_text"], result["word_count"], result["character_count"])
+        ai_analysis = _build_ai_analysis(analysis, result["extracted_text"])
         return ExtractionResponse(
             success=True,
             filename=filename,
@@ -156,6 +173,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, 
             character_count=result["character_count"],
             word_count=result["word_count"],
             analysis=analysis,
+            ai_analysis=ai_analysis,
             download_id=download_id,
         )
 
@@ -173,6 +191,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, 
                 extraction_method="pdf_ocr",
                 character_count=0,
                 word_count=0,
+                ai_analysis=None,
                 download_id=download_id,
             )
 
@@ -189,13 +208,16 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, 
                 extraction_method="pdf_ocr",
                 character_count=0,
                 word_count=0,
+                ai_analysis=None,
                 download_id=download_id,
             )
 
         ocr_result = ocr_pdf_pages(page_images)
         analysis = None
+        ai_analysis = None
         if ocr_result["success"] and ocr_result["extracted_text"]:
             analysis = _build_analysis(ocr_result["extracted_text"], ocr_result["word_count"], ocr_result["character_count"])
+            ai_analysis = _build_ai_analysis(analysis, ocr_result["extracted_text"])
         return ExtractionResponse(
             success=ocr_result["success"],
             filename=filename,
@@ -208,6 +230,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, 
             character_count=ocr_result["character_count"],
             word_count=ocr_result["word_count"],
             analysis=analysis,
+            ai_analysis=ai_analysis,
             download_id=download_id,
         )
 
@@ -222,6 +245,7 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, 
         extraction_method="pdf_text",
         character_count=0,
         word_count=0,
+        ai_analysis=None,
         download_id=download_id,
     )
 
@@ -229,8 +253,10 @@ def _process_pdf(content: bytes, filename: str, file_type: str, file_size: int, 
 def _process_image(content: bytes, filename: str, file_type: str, file_size: int, download_id: str) -> ExtractionResponse:
     result = ocr_image(content)
     analysis = None
+    ai_analysis = None
     if result["success"] and result["extracted_text"]:
         analysis = _build_analysis(result["extracted_text"], result["word_count"], result["character_count"])
+        ai_analysis = _build_ai_analysis(analysis, result["extracted_text"])
     return ExtractionResponse(
         success=result["success"],
         filename=filename,
@@ -243,5 +269,7 @@ def _process_image(content: bytes, filename: str, file_type: str, file_size: int
         character_count=result["character_count"],
         word_count=result["word_count"],
         analysis=analysis,
+        ai_analysis=ai_analysis,
         download_id=download_id,
     )
+

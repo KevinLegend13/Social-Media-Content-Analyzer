@@ -1,8 +1,10 @@
-import io, sys
+import io, sys, json, os
+from unittest.mock import MagicMock, patch
 sys.stdout.reconfigure(encoding="utf-8")
 import pymupdf
 from fastapi.testclient import TestClient
 from main import app
+
 
 client = TestClient(app)
 passed = 0
@@ -223,6 +225,127 @@ def t_dl_404():
     assert_eq(client.get("/api/download/nope").status_code, 404)
 run("Download missing -> 404", t_dl_404)
 
+print("\n=== GEMINI SERVICE & ENDPOINT MOCK TESTS ===")
+
+def t_gemini_status_no_key():
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "", "GEMINI_MODEL": "gemini-2.5-flash"}, clear=True):
+        r = client.get("/api/gemini/status").json()
+        assert_eq(r["configured"], False)
+        assert_eq(r["available"], False)
+        assert_true("API_KEY" in r["message"])
+run("Gemini status - missing API key", t_gemini_status_no_key)
+
+def t_gemini_status_no_model():
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": ""}, clear=True):
+        r = client.get("/api/gemini/status").json()
+        assert_eq(r["configured"], False)
+        assert_eq(r["available"], False)
+        assert_true("MODEL" in r["message"])
+run("Gemini status - missing model", t_gemini_status_no_model)
+
+def t_gemini_status_available():
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-2.5-flash"}, clear=True):
+        r = client.get("/api/gemini/status").json()
+        assert_eq(r["configured"], True)
+        assert_eq(r["available"], True)
+        assert_eq(r["model"], "gemini-2.5-flash")
+run("Gemini status - available", t_gemini_status_available)
+
+def t_gemini_generate_success():
+    from services.gemini_service import generate_gemini_interpretation
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
+        "summary": "Content is concise with good engagement potential.",
+        "strengths": ["Includes clear call to action", "Good readability"],
+        "improvements": ["Add 1-2 relevant hashtags"],
+        "priority_actions": [
+            {"priority": "high", "action": "Add hashtags", "reason": "Increases discoverability"}
+        ]
+    })
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-2.5-flash"}), \
+         patch("services.gemini_service.genai.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        sample_analysis = {
+            "content_type": "social_media",
+            "engagement_score": 75,
+            "metrics": {"word_count": 50, "hashtag_count": 0}
+        }
+        ai_result = generate_gemini_interpretation(sample_analysis, text="Test post #tag")
+        assert_true(ai_result is not None)
+        assert_eq(ai_result.summary, "Content is concise with good engagement potential.")
+        assert_eq(ai_result.priority_actions[0].priority, "high")
+run("Gemini generate - structured response success", t_gemini_generate_success)
+
+def t_gemini_generate_invalid_json():
+    from services.gemini_service import generate_gemini_interpretation
+    mock_response = MagicMock()
+    mock_response.text = "NOT JSON GARBAGE"
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-2.5-flash"}), \
+         patch("services.gemini_service.genai.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        ai_result = generate_gemini_interpretation({"engagement_score": 50}, text="")
+        assert_eq(ai_result, None)
+run("Gemini generate - invalid JSON returns None", t_gemini_generate_invalid_json)
+
+def t_gemini_generate_api_error():
+    from services.gemini_service import generate_gemini_interpretation
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-2.5-flash"}), \
+         patch("services.gemini_service.genai.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = RuntimeError("API error or timeout")
+        mock_client_cls.return_value = mock_client
+
+        ai_result = generate_gemini_interpretation({"engagement_score": 50}, text="")
+        assert_eq(ai_result, None)
+run("Gemini generate - API failure/timeout returns None", t_gemini_generate_api_error)
+
+def t_upload_with_mocked_gemini():
+    mock_ai_json = {
+        "summary": "Mocked AI explanation",
+        "strengths": ["Good CTA"],
+        "improvements": ["Add hashtags"],
+        "priority_actions": [
+            {"priority": "high", "action": "Add hashtags", "reason": "Reach"}
+        ]
+    }
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(mock_ai_json)
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-2.5-flash"}), \
+         patch("services.gemini_service.genai.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        r = upload(make_pdf("Did you know? Check it out! #Tips"), "ai_test.pdf")
+        assert_eq(r.status_code, 200)
+        data = r.json()
+        assert_true(data["analysis"] is not None)
+        assert_true(data["ai_analysis"] is not None)
+        assert_eq(data["ai_analysis"]["summary"], "Mocked AI explanation")
+        assert_true(data["analysis"]["engagement_score"] > 0)
+run("Upload endpoint - succeeds with mocked Gemini AI", t_upload_with_mocked_gemini)
+
+def t_upload_fallback_when_gemini_fails():
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-2.5-flash"}), \
+         patch("services.gemini_service.genai.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = Exception("Quota exceeded")
+        mock_client_cls.return_value = mock_client
+
+        r = upload(make_pdf("Did you know? Check it out! #Tips"), "ai_fail.pdf")
+        assert_eq(r.status_code, 200)
+        data = r.json()
+        assert_true(data["analysis"] is not None)
+        assert_eq(data["ai_analysis"], None)
+        assert_true(data["analysis"]["engagement_score"] > 0)
+run("Upload endpoint - falls back gracefully when Gemini fails", t_upload_fallback_when_gemini_fails)
+
 print("\n=== ERROR CASES ===")
 run("Invalid ext -> 400", lambda: assert_eq(upload(b"hi", "x.txt", "text/plain").status_code, 400))
 run("Empty -> 400", lambda: assert_eq(upload(b"", "e.pdf", "application/pdf").status_code, 400))
@@ -232,6 +355,7 @@ def t_corrupt():
     assert_eq(r.json()["success"], False)
     assert_true("corrupt" in r.json()["message"].lower())
 run("Corrupted PDF -> handled", t_corrupt)
+
 
 print(f"\n{'='*50}")
 print(f"RESULTS: {passed} passed, {failed} failed, {passed+failed} total")

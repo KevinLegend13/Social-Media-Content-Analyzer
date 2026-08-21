@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel
 
 
@@ -49,6 +50,26 @@ class ContentAnalysis(BaseModel):
     suggestions: list[str]
 
 
+class PriorityAction(BaseModel):
+    priority: Literal["high", "medium", "low"]
+    action: str
+    reason: str
+
+
+class AIAnalysis(BaseModel):
+    summary: str
+    strengths: list[str]
+    improvements: list[str]
+    priority_actions: list[PriorityAction]
+
+
+class GeminiStatusResponse(BaseModel):
+    available: bool
+    configured: bool
+    model: str | None = None
+    message: str
+
+
 class ExtractionResponse(BaseModel):
     success: bool
     filename: str
@@ -61,5 +82,7 @@ class ExtractionResponse(BaseModel):
     character_count: int
     word_count: int
     analysis: ContentAnalysis | dict | None = None
+    ai_analysis: AIAnalysis | None = None
     download_id: str | None = None
+
 
