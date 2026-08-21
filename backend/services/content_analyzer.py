@@ -488,7 +488,6 @@ def _assess_suitability(
     has_cta, has_hook, has_bullet_points, text,
 ) -> dict:
     legacy_reasons = []
-    classification_reasons = []
 
     is_short_form = 0 < word_count <= 200
     is_long_form = word_count > 200
@@ -496,18 +495,13 @@ def _assess_suitability(
     has_hashtags = hashtag_count >= 1
     has_interaction = question_count >= 1
     has_emojis_exc = emoji_count > 0 or exclamation_count > 0
+    has_hook_keyword = any(hook in text[:100].lower() for hook in HOOK_OPENERS)
 
     header_matches = DOCUMENT_HEADERS.findall(text)
     report_matches = REPORT_HEADERS.findall(text)
     citation_matches = CITATION_PATTERN.findall(text)
     code_matches = CODE_PATTERN.findall(text)
     tech_terms = TECHNICAL_TERMS_PATTERN.findall(text)
-
-    has_academic_headers = bool(header_matches)
-    has_report_headers = bool(report_matches)
-    has_citations = len(citation_matches) >= 1
-    has_code = len(code_matches) >= 1
-    has_tech_terms = len(tech_terms) >= 1
 
     if not has_hashtags:
         legacy_reasons.append("No hashtags detected, which is uncommon for social media posts.")
@@ -522,116 +516,154 @@ def _assess_suitability(
     if len(code_matches) >= 2:
         legacy_reasons.append("Code snippets detected, indicating technical/programming content.")
 
-    # 1. Academic Document
-    if (has_academic_headers and (has_citations or is_long_form)) or (has_citations and len(citation_matches) >= 2 and is_long_form):
-        content_type = "academic_document"
-        suitability_label = "likely_document"
-        score_applicability = "low"
-        score_applicability_reason = "The uploaded content appears to be an academic document rather than a social-media post."
+    scores = {}
+    category_reasons = {}
 
-        if is_long_form:
-            classification_reasons.append("Long-form document structure detected")
-        if has_academic_headers:
-            classification_reasons.append("Academic section headings detected")
-        if has_citations:
-            classification_reasons.append("Reference/citation patterns detected")
-        if avg_sentence_length > 20:
-            classification_reasons.append("Formal writing style detected")
-        if not classification_reasons:
-            classification_reasons.append("Academic content structures and citations detected")
+    # 1. Social Media
+    social_score = 0
+    social_signals = []
+    if is_short_form:
+        social_score += 20
+        social_signals.append("Short-form content detected")
+    if has_hashtags:
+        social_score += 30
+        social_signals.append("Hashtags detected")
+    if has_cta:
+        social_score += 25
+        social_signals.append("Call to action detected")
+    if has_interaction:
+        social_score += 15
+        social_signals.append("Audience interaction detected")
+    if has_emojis_exc:
+        social_score += 15
+        social_signals.append("Visual emojis or enthusiastic tone detected")
+    if has_hook_keyword:
+        social_score += 15
+        social_signals.append("Attention-grabbing opener detected")
+    scores["social_media"] = social_score
+    category_reasons["social_media"] = social_signals
 
-        confidence = 80
-        if has_academic_headers:
-            confidence += 10
-        if has_citations:
-            confidence += 10
-
-    # 2. Technical / Project Report
-    elif (has_report_headers or (is_long_form and (has_tech_terms or has_bullet_points) and not (has_hashtags or has_cta)) or ("report" in text.lower()[:200] and is_long_form)) and not has_code:
-        content_type = "report"
-        suitability_label = "likely_document"
-        score_applicability = "low"
-        score_applicability_reason = "The uploaded content appears to be a technical report rather than a social-media post."
-
-        if is_long_form:
-            classification_reasons.append("Long-form document structure detected")
-        if has_report_headers or has_academic_headers:
-            classification_reasons.append("Multiple section headings detected")
-        if has_tech_terms:
-            classification_reasons.append("Technical terminology detected")
-        if has_citations:
-            classification_reasons.append("Reference/citation patterns detected")
-        if not classification_reasons:
-            classification_reasons.append("Report section headings detected")
-
-        confidence = 85
-        if has_report_headers:
-            confidence += 10
+    # 2. Academic Document
+    academic_score = 0
+    academic_signals = []
+    if header_matches:
+        academic_score += min(80, len(header_matches) * 40)
+        academic_signals.append("Academic section headings detected")
+    if citation_matches:
+        academic_score += 30 if len(citation_matches) >= 2 else 15
+        academic_signals.append("Reference/citation patterns detected")
+    if is_long_form:
+        academic_score += 20
+        academic_signals.append("Long-form document structure detected")
+    if avg_sentence_length > 20:
+        academic_score += 15
+        academic_signals.append("Formal writing style detected")
+    scores["academic_document"] = academic_score
+    category_reasons["academic_document"] = academic_signals
 
     # 3. Technical Document
-    elif has_code or (has_tech_terms and len(tech_terms) >= 2) or (is_long_form and has_tech_terms and not (has_hashtags or has_cta or has_interaction)):
-        content_type = "technical_document"
-        suitability_label = "likely_document"
-        score_applicability = "low"
-        score_applicability_reason = "The uploaded content appears to be a technical document rather than a social-media post."
+    tech_score = 0
+    tech_signals = []
+    if code_matches:
+        tech_score += min(80, len(code_matches) * 40)
+        tech_signals.append("Code snippets detected")
+    if tech_terms:
+        tech_score += min(60, len(tech_terms) * 15)
+        tech_signals.append("Technical terminology detected")
+    if is_long_form:
+        tech_score += 15
+        tech_signals.append("Long-form document structure detected")
+    if (header_matches or report_matches) and ("architecture" in text.lower() or "api" in text.lower()):
+        tech_score += 15
+        tech_signals.append("Technical section headings detected")
+    scores["technical_document"] = tech_score
+    category_reasons["technical_document"] = tech_signals
 
-        if is_long_form:
-            classification_reasons.append("Long-form document structure detected")
-        if has_code:
-            classification_reasons.append("Code snippets detected")
-        if has_tech_terms:
-            classification_reasons.append("Technical terminology detected")
-        if has_academic_headers or has_report_headers:
-            classification_reasons.append("Multiple section headings detected")
-        if not classification_reasons:
-            classification_reasons.append("Technical document markers detected")
+    # 4. Report
+    report_score = 0
+    report_signals = []
+    if report_matches:
+        report_score += min(80, len(report_matches) * 40)
+        report_signals.append("Multiple section headings detected")
+    if is_long_form:
+        report_score += 20
+        report_signals.append("Long-form document structure detected")
+    if has_bullet_points:
+        report_score += 15
+        report_signals.append("Structured document layout detected")
+    if "report" in text.lower()[:200] or "executive summary" in text.lower()[:200]:
+        report_score += 20
+        report_signals.append("Report section headings detected")
+    scores["report"] = report_score
+    category_reasons["report"] = report_signals
 
-        confidence = 85
-        if has_code:
-            confidence += 10
+    # 5. Article
+    article_score = 0
+    article_signals = []
+    if is_long_form and not (has_hashtags or has_cta):
+        article_score += 30
+        article_signals.append("Long-form document structure detected")
+    if sentence_count >= 5 and 8 <= avg_sentence_length <= 25:
+        article_score += 25
+        article_signals.append("Editorial paragraph flow detected")
+    scores["article"] = article_score
+    category_reasons["article"] = article_signals
 
-    # 4. Social Media
-    elif has_hashtags or has_cta or (is_short_form and (has_interaction or has_hook or has_emojis_exc) and not (has_academic_headers or has_report_headers or is_long_form)):
-        content_type = "social_media"
-        social_score = (1 if is_short_form else 0) + (1 if has_hashtags else 0) + (1 if has_cta else 0) + (1 if has_interaction else 0) + (1 if has_emojis_exc else 0) + (1 if has_hook else 0)
+    # Select category with highest signal strength
+    best_category = "unknown"
+    best_score = 0
+    priority = ["social_media", "academic_document", "technical_document", "report", "article"]
+    for cat in priority:
+        if scores[cat] > best_score and scores[cat] >= 30:
+            best_score = scores[cat]
+            best_category = cat
 
-        if social_score >= 2 or has_hashtags or has_cta:
+    classification_reasons = category_reasons.get(
+        best_category,
+        ["General text without specific social media or document structure markers"],
+    )
+    if not classification_reasons:
+        classification_reasons = ["General text without specific social media or document structure markers"]
+
+    if best_category == "social_media":
+        if best_score >= 50 or has_hashtags or has_cta:
             suitability_label = "likely_social_media"
             score_applicability = "high"
             score_applicability_reason = "The content exhibits strong social media characteristics, making the engagement score highly applicable."
-            confidence = min(100, 60 + social_score * 8)
         else:
             suitability_label = "possibly_social_media"
             score_applicability = "medium"
             score_applicability_reason = "The content has some social media elements, so the engagement score is moderately applicable."
-            confidence = 65
-
-        if is_short_form:
-            classification_reasons.append("Short-form content detected")
-        if has_hashtags:
-            classification_reasons.append("Hashtags detected")
-        if has_cta:
-            classification_reasons.append("Call to action detected")
-        if has_interaction:
-            classification_reasons.append("Audience interaction detected")
-        if has_emojis_exc:
-            classification_reasons.append("Visual emojis or enthusiastic tone detected")
-
         if not legacy_reasons:
             legacy_reasons.append("Content contains typical social media elements.")
+        confidence = min(100, max(60, 50 + best_score // 2))
 
-    # 5. Article
-    elif is_long_form and not (has_hashtags or has_cta) and sentence_count >= 5 and avg_sentence_length <= 25:
-        content_type = "article"
+    elif best_category == "academic_document":
+        suitability_label = "likely_document"
+        score_applicability = "low"
+        score_applicability_reason = "The uploaded content appears to be an academic document rather than a social-media post."
+        confidence = min(100, max(75, 50 + best_score // 2))
+
+    elif best_category == "technical_document":
+        suitability_label = "likely_document"
+        score_applicability = "low"
+        score_applicability_reason = "The uploaded content appears to be a technical document rather than a social-media post."
+        confidence = min(100, max(75, 50 + best_score // 2))
+
+    elif best_category == "report":
+        suitability_label = "likely_document"
+        score_applicability = "low"
+        score_applicability_reason = "The uploaded content appears to be a technical report rather than a social-media post."
+        confidence = min(100, max(75, 50 + best_score // 2))
+
+    elif best_category == "article":
         suitability_label = "likely_document"
         score_applicability = "medium"
         score_applicability_reason = "The content resembles a long-form article or blog post, so social media engagement metrics have medium applicability."
-        classification_reasons = ["Long-form document structure detected", "Editorial paragraph flow detected"]
-        confidence = 75
+        confidence = min(100, max(65, 50 + best_score // 2))
 
-    # 6. Ambiguous / Unknown
     else:
-        content_type = "unknown"
+        best_category = "unknown"
         suitability_label = "possibly_social_media"
         score_applicability = "medium"
         score_applicability_reason = "The content structure is ambiguous with minimal social or document markers, giving the engagement score medium applicability."
@@ -645,12 +677,13 @@ def _assess_suitability(
         "label": suitability_label,
         "suitability": suitability_label,
         "reasons": legacy_reasons,
-        "content_type": content_type,
+        "content_type": best_category,
         "suitability_confidence": confidence,
         "score_applicability": score_applicability,
         "score_applicability_reason": score_applicability_reason,
         "classification_reasons": classification_reasons,
     }
+
 
 
 

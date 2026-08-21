@@ -158,6 +158,22 @@ def t_ext_empty():
     assert_eq(a["classification_reasons"], ["No text content detected"])
 run("5. Empty content", t_ext_empty)
 
+def t_ext_tech_dominant():
+    txt = (
+        "Executive Summary\n"
+        "Here is the system architecture code implementation:\n\n"
+        "import sys\nimport os\n\ndef main():\n    pass\n\nclass DataPipeline:\n    def process(self):\n        return True\n\n"
+        "function calculateMetrics() {\n    const api = '/api/v1/data';\n    return fetch(api);\n}\n"
+        "System requirements, database backend configuration, deployment schema, microservices architecture."
+    )
+    r = upload(make_pdf(txt), "tech_dominant.pdf")
+    a = r.json()["analysis"]
+    assert_eq(a["content_type"], "technical_document")
+    assert_eq(a["score_applicability"], "low")
+    assert_true("Code snippets detected" in a["classification_reasons"])
+run("6. Technical dominant over report signals", t_ext_tech_dominant)
+
+
 
 print("\n=== SCORE EXPLANATIONS ===")
 def t_no_hashtags():
