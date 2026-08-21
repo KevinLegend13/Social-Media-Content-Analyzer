@@ -695,10 +695,14 @@ def _generate_strengths_and_improvements(
     strengths = []
     improvements = []
 
-    if hashtag_count >= 2:
+    if 2 <= hashtag_count <= 4:
         strengths.append(f"Using {hashtag_count} hashtags helps with discoverability.")
     elif hashtag_count == 1:
         improvements.append("Add 1\u20133 more hashtags. 2\u20134 hashtags tend to perform best.")
+    elif hashtag_count == 5:
+        improvements.append("Consider reducing from 5 hashtags to 2\u20134 focused ones.")
+    elif hashtag_count > 5:
+        improvements.append("You have many hashtags. Consider reducing to 2\u20134 focused ones.")
     else:
         improvements.append("Add 2\u20134 relevant hashtags to increase discoverability.")
 
@@ -733,8 +737,8 @@ def _generate_strengths_and_improvements(
         strengths.append(f"Content length ({word_count} words) is well-suited for social media.")
     elif word_count < 20:
         improvements.append("Content is very short. Consider expanding with more detail.")
-    elif word_count > 200:
-        improvements.append("Content is long for social media. Consider trimming for readability.")
+    elif word_count > 150:
+        improvements.append("Content is long for social media. Consider shortening or breaking into multiple posts.")
 
     if has_bullet_points:
         strengths.append("Bullet points improve scannability.")
@@ -783,8 +787,14 @@ def _explain_hashtags(count, points):
     max_pts = 15
     if 2 <= count <= 4:
         return {"earned": points, "max": max_pts, "status": "good", "detail": f"{count} hashtags \u2014 optimal range for engagement.", "improvement": None}
-    elif count == 1:
-        return {"earned": points, "max": max_pts, "status": "ok", "detail": "1 hashtag found.", "improvement": "Add 1\u20133 more hashtags for better discoverability."}
+    elif count == 1 or count == 5:
+        return {
+            "earned": points,
+            "max": max_pts,
+            "status": "ok",
+            "detail": f"{count} hashtags found." if count == 5 else "1 hashtag found.",
+            "improvement": "Consider reducing to 2\u20134 hashtags." if count == 5 else "Add 1\u20133 more hashtags for better discoverability."
+        }
     elif count > 5:
         return {"earned": points, "max": max_pts, "status": "needs_improvement", "detail": f"{count} hashtags \u2014 too many can reduce engagement.", "improvement": "Reduce to 2\u20134 focused, relevant hashtags."}
     else:

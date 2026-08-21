@@ -31,8 +31,14 @@ def make_pdf(text):
     doc.close()
     return d
 
-def upload(data, name, ct="application/pdf"):
+_mock_ai_override = False
+
+def upload(data, name, ct="application/pdf", mock_ai=True):
+    if mock_ai and not _mock_ai_override:
+        with patch("services.gemini_service.generate_gemini_interpretation", return_value=None):
+            return client.post("/api/upload", files={"file": (name, io.BytesIO(data), ct)})
     return client.post("/api/upload", files={"file": (name, io.BytesIO(data), ct)})
+
 
 print("\n=== HEALTH ===")
 run("Health", lambda: assert_eq(client.get("/api/health").json()["status"], "ok"))
@@ -322,7 +328,7 @@ def t_upload_with_mocked_gemini():
         mock_client.models.generate_content.return_value = mock_response
         mock_client_cls.return_value = mock_client
 
-        r = upload(make_pdf("Did you know? Check it out! #Tips"), "ai_test.pdf")
+        r = upload(make_pdf("Did you know? Check it out! #Tips"), "ai_test.pdf", mock_ai=False)
         assert_eq(r.status_code, 200)
         data = r.json()
         assert_true(data["analysis"] is not None)
@@ -338,7 +344,8 @@ def t_upload_fallback_when_gemini_fails():
         mock_client.models.generate_content.side_effect = Exception("Quota exceeded")
         mock_client_cls.return_value = mock_client
 
-        r = upload(make_pdf("Did you know? Check it out! #Tips"), "ai_fail.pdf")
+        r = upload(make_pdf("Did you know? Check it out! #Tips"), "ai_fail.pdf", mock_ai=False)
+
         assert_eq(r.status_code, 200)
         data = r.json()
         assert_true(data["analysis"] is not None)

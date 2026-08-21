@@ -1,8 +1,19 @@
 import uuid
+from pathlib import Path
+from dotenv import load_dotenv
+
+_backend_dir = Path(__file__).resolve().parent
+_root_dir = _backend_dir.parent
+_env_path = _root_dir / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)
+else:
+    load_dotenv(dotenv_path=_backend_dir / ".env")
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+
 
 from models.schemas import HealthResponse, ExtractionResponse, GeminiStatusResponse
 from services.file_validator import (

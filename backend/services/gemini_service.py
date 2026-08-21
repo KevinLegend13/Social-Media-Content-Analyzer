@@ -1,11 +1,23 @@
 import json
 import logging
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from google import genai
 
 from models.schemas import AIAnalysis, GeminiStatusResponse
 
 logger = logging.getLogger(__name__)
+
+# Load .env relative to project root directory
+_services_dir = Path(__file__).resolve().parent
+_root_dir = _services_dir.parent.parent
+_env_path = _root_dir / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)
+else:
+    load_dotenv(dotenv_path=_services_dir.parent / ".env")
+
 
 
 def get_gemini_status() -> dict:
@@ -120,3 +132,5 @@ def generate_gemini_interpretation(analysis: dict, text: str = "") -> AIAnalysis
     except Exception as e:
         logger.warning("Gemini interpretation generation failed: %s", e)
         return None
+
+

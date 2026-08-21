@@ -14,3 +14,49 @@ body {
 
 .mono { font-family: 'JetBrains Mono', monospace; }
 .display { font-family: 'Newsreader', serif; }
+
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: auto;
+  }
+
+  body, html, #root, .bg-\[\#050505\], .bg-\[\#0A0A0C\] {
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  button, .no-print, a[href^="/api/download"], .no-print-btn {
+    display: none !important;
+  }
+
+  .border, .border-b, .border-t, .border-y {
+    border-color: #e5e7eb !important;
+  }
+
+  .bg-white\/\[0\.015\], .bg-white\/\[0\.02\], .bg-white\/\[0\.01\] {
+    background: #f9fafb !important;
+  }
+
+  .text-white\/90, .text-white\/95, .text-white\/85, .text-white\/80, .text-white\/75, .text-white\/70, .text-\[\#F2EFE8\] {
+    color: #111111 !important;
+  }
+
+  .text-white\/50, .text-white\/45, .text-white\/40, .text-white\/35, .text-white\/30, .text-white\/25 {
+    color: #4b5563 !important;
+  }
+
+  section, .border-b {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  pre {
+    white-space: pre-wrap !important;
+    background: #f3f4f6 !important;
+    color: #111111 !important;
+    border: 1px solid #e5e7eb !important;
+    max-height: none !important;
+  }
+}
+
