@@ -35,7 +35,8 @@ _mock_ai_override = False
 
 def upload(data, name, ct="application/pdf", mock_ai=True):
     if mock_ai and not _mock_ai_override:
-        with patch("services.gemini_service.generate_gemini_interpretation", return_value=None):
+        with patch("main.generate_gemini_interpretation", return_value=None), \
+             patch("services.gemini_service.generate_gemini_interpretation", return_value=None):
             return client.post("/api/upload", files={"file": (name, io.BytesIO(data), ct)})
     return client.post("/api/upload", files={"file": (name, io.BytesIO(data), ct)})
 

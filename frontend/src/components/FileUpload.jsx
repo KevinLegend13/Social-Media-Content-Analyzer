@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { getApiUrl } from '../api'
 
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 const ACCEPTED_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg']
@@ -33,7 +34,7 @@ export default function FileUpload({ onFileValidated }) {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const response = await fetch('/api/upload', { method: 'POST', body: formData })
+      const response = await fetch(getApiUrl('/api/upload'), { method: 'POST', body: formData })
       const data = await response.json()
       if (!response.ok) {
         const message = data.detail?.message || data.detail || 'Upload failed.'

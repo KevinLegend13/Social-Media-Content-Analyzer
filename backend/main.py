@@ -1,3 +1,4 @@
+import os
 import uuid
 from pathlib import Path
 from dotenv import load_dotenv
@@ -34,10 +35,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
+cors_origins_env = os.environ.get("CORS_ORIGINS", "*").strip()
+if cors_origins_env == "*" or not cors_origins_env:
+    cors_origins = ["*"]
+    allow_credentials = False
+else:
+    cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+    for dev_origin in ("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"):
+        if dev_origin not in cors_origins:
+            cors_origins.append(dev_origin)
+    allow_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.netlify\.app" if "*" not in cors_origins else None,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -283,4 +296,13 @@ def _process_image(content: bytes, filename: str, file_type: str, file_size: int
         ai_analysis=ai_analysis,
         download_id=download_id,
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    uvicorn.run("main:app", host=host, port=port, reload=False)
+
 

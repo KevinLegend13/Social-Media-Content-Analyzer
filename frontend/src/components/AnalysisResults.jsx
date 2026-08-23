@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { getApiUrl } from '../api'
 
 const SCORE_META = [
   { n: '01', key: 'length', label: 'CONTENT LENGTH' },
@@ -779,7 +780,7 @@ export default function AnalysisResults({ result, onReset }) {
           <p className="mt-2 text-[13px] leading-[1.6] text-white/50">Download the original uploaded file from storage.</p>
           {result.download_id ? (
             <a
-              href={`/api/download/${result.download_id}`}
+              href={getApiUrl(`/api/download/${result.download_id}`)}
               download={result.filename}
               className="mt-4 inline-flex mono text-[11px] tracking-[0.14em] border border-white/20 px-5 py-2.5 text-white/90 hover:border-[#8B5CF6]/50 hover:bg-white/10 transition-all duration-200 cursor-pointer"
             >

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: social-media-content-analyzer-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: PORT
+        value: 10000
