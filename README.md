@@ -1,5 +1,11 @@
 # Social Media Content Analyzer
 
+## 🚀 Live Demo
+
+[Open the Live Application](https://symphonious-axolotl-673082.netlify.app/)
+
+The application provides explainable engagement analysis, content suitability classification, Gemini-powered interpretation, and downloadable reports.
+
 A full-stack web application that accepts PDF and image uploads, extracts text (with OCR fallback for scanned documents), and produces a heuristic engagement analysis with scoring, suitability assessment, breakdown metrics, and actionable suggestions.
 
 ## Features
